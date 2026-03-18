@@ -701,18 +701,18 @@ function calcAndShow(){
      ...res.chairMoves.map(m=>({...m,itemType:'chair',toRoom:res.newRoom}))].forEach(m=>{
       if(m.shortage||m.sameRoom) return;
       if(!outMap[m.fromRoom]) outMap[m.fromRoom]=[];
-      outMap[m.fromRoom].push({size:m.size,itemType:m.itemType,qty:m.qty,toRoom:m.toRoom,kind:'normal',diff:m.diff,targetSize:m.targetSize});
+      outMap[m.fromRoom].push({size:m.size,itemType:m.itemType,qty:m.qty,toRoom:dispNewRoom(m.toRoom),kind:'normal',diff:m.diff,targetSize:m.targetSize});
     });
   });
   // 余剰直接配送
   directMoves.forEach(m=>{
     if(!outMap[m.fromRoom]) outMap[m.fromRoom]=[];
-    outMap[m.fromRoom].push({size:m.size,itemType:m.itemType,qty:m.qty,toRoom:m.toRoom,kind:'direct',diff:0});
+    outMap[m.fromRoom].push({size:m.size,itemType:m.itemType,qty:m.qty,toRoom:dispRoom(m.toRoom),kind:'direct',diff:0});
   });
   // 余剰倉庫行き
   surplusItems.forEach(m=>{
     if(!outMap[m.fromRoom]) outMap[m.fromRoom]=[];
-    outMap[m.fromRoom].push({size:m.size,itemType:m.itemType,qty:m.qty,toRoom:m.toRoom,kind:'surplus',diff:0});
+    outMap[m.fromRoom].push({size:m.size,itemType:m.itemType,qty:m.qty,toRoom:dispRoom(m.toRoom),kind:'surplus',diff:0});
   });
 
   const outRooms=Object.keys(outMap);
@@ -734,7 +734,7 @@ function calcAndShow(){
           '<span style="margin-left:auto;font-size:12px;color:var(--muted)">→ '+escH(m.toRoom)+'</span>'+
         '</div>';
       }).join('');
-      html+='<div class="move-block"><div class="move-block-title">📦 '+escH(room)+' から搬出</div>'+rows+'<div class="total-chip">合計 '+total+' 台を搬出</div></div>';
+      html+='<div class="move-block"><div class="move-block-title">📦 '+escH(dispRoom(room))+' から搬出</div>'+rows+'<div class="total-chip">合計 '+total+' 台を搬出</div></div>';
     });
     html+='</div>';
   }
@@ -766,12 +766,12 @@ function calcAndShow(){
     } else {
       Object.values(summary).forEach(s=>{
         const typeLabel=s.itemType==='desk'?'机':'椅子';
-        const src=s.shortage?'不足あり':s.sameOnly?'同室':s.fromRooms.join('・')+'から';
+        const src=s.shortage?'不足あり':s.sameOnly?'同室':s.fromRooms.map(r=>dispRoom(r)).join('・')+'から';
         rows+='<div class="rrow"><span class="rlabel">'+s.size+' '+typeLabel+'</span>'+
           '<span class="rval '+(s.shortage?'neg':'')+'">'+s.qty+'台<span style="font-size:11px;font-weight:400;color:'+(s.shortage?'var(--red)':'var(--muted)')+'"> '+src+'</span></span></div>';
       });
     }
-    html+='<div class="rcard"><div class="rcard-name">🏫 '+escH(res.newRoom)+
+    html+='<div class="rcard"><div class="rcard-name">🏫 '+escH(dispNewRoom(res.newRoom))+
       (res.oldRoom&&res.oldRoom!=='—'?'<span style="font-size:11px;font-weight:400;color:var(--faint)">（旧:'+escH(res.oldRoom)+'）</span>':'')+'</div>'+rows+'</div>';
   });
   html+='</div>';
@@ -807,7 +807,7 @@ function calcAndShow(){
           '<span style="margin-left:auto;font-size:12px;color:var(--muted)">→ '+escH(m.toRoom)+'</span>'+
         '</div>';
       }).join('');
-      html+='<div class="move-block"><div class="move-block-title">📤 '+escH(room)+' の余剰</div>'+rows+'<div class="total-chip">合計 '+total+' 台</div></div>';
+      html+='<div class="move-block"><div class="move-block-title">📤 '+escH(dispRoom(room))+' の余剰</div>'+rows+'<div class="total-chip">合計 '+total+' 台</div></div>';
     });
     html+='</div>';
   }
@@ -834,6 +834,19 @@ function getRoomDist2(name){
 // ── ユーティリティ ──
 function escH(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function escJ(s){return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+// 表示名：「旧教室名（新:新教室名）」形式
+function dispRoom(name){
+  const map=roomMap.find(m=>m.oldRoom===name);
+  if(!map||!map.newRoom||map.newRoom===name) return name;
+  return name+'（新:'+map.newRoom+'）';
+}
+// 新教室名から旧教室名の表示
+function dispNewRoom(newName){
+  const map=roomMap.find(m=>m.newRoom===newName);
+  if(!map||!map.oldRoom||map.oldRoom===newName) return newName;
+  return map.oldRoom+'（新:'+newName+'）';
+}
+
 
 
 
@@ -851,18 +864,18 @@ function buildAllMoveLines(results){
       if(m.sameRoom||m.shortage) return;
       const typeLabel=m.itemType==='desk'?'つくえ':'いす';
       const note=m.diff!==0?'【代替:本来'+m.targetSize+'】':'';
-      lines.push({from:m.fromRoom,item:m.size+typeLabel,qty:m.qty,to:res.newRoom,note});
+      lines.push({from:dispRoom(m.fromRoom),item:m.size+typeLabel,qty:m.qty,to:dispNewRoom(res.newRoom),note});
     });
   });
   // 余剰直接配送
   (lastDirectMoves||[]).forEach(m=>{
     const typeLabel=m.itemType==='desk'?'つくえ':'いす';
-    lines.push({from:m.fromRoom,item:m.size+typeLabel,qty:m.qty,to:m.toRoom,note:'【余剰→直接配送】'});
+    lines.push({from:dispRoom(m.fromRoom),item:m.size+typeLabel,qty:m.qty,to:dispRoom(m.toRoom),note:'【余剰→直接配送】'});
   });
   // 余剰倉庫行き
   (lastSurplus||[]).forEach(m=>{
     const typeLabel=m.itemType==='desk'?'つくえ':'いす';
-    lines.push({from:m.fromRoom,item:m.size+typeLabel,qty:m.qty,to:m.toRoom,note:'【余剰→倉庫】'});
+    lines.push({from:dispRoom(m.fromRoom),item:m.size+typeLabel,qty:m.qty,to:dispRoom(m.toRoom),note:'【余剰→倉庫】'});
   });
   return lines;
 }
