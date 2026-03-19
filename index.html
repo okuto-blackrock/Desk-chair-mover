@@ -316,6 +316,37 @@ tbody tr:hover{background:#FAFAF8}
 <div class="panel" id="panel-3">
   <p class="stitle">新年度　必要台数の入力</p>
   <p class="sdesc">各新教室に必要な机・椅子の台数を号数ごとに入力してください。<br>複数の号数が混在する場合はすべて入力します。倉庫・多目的室は空欄で構いません。</p>
+
+  <!-- 学年設定カード -->
+  <div class="card" id="grade-config-card">
+    <div class="ctitle" style="cursor:pointer" onclick="toggleGradeConfig()">
+      🤖 学年設定・自動入力
+      <span id="grade-config-arrow" style="margin-left:auto;font-size:12px;color:var(--muted)">▼ 開く</span>
+    </div>
+    <div id="grade-config-body" style="display:none">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">①学年ごとの号数、②クラスごとの人数を設定して「🤖 自動入力」を押すと、必要台数が仮入力されます。その後手動で調整できます。</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">① 学年別　号数の設定</div>
+          <div style="display:grid;grid-template-columns:50px 90px 90px;gap:6px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">学年</div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">机</div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">椅子</div>
+          </div>
+          <div id="grade-config-rows"></div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">② クラス別　人数の入力</div>
+          <div id="class-count-rows"></div>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn btn-p" onclick="autoFillNeeds()">🤖 自動入力する</button>
+        <button class="btn btn-g" style="font-size:12px" onclick="clearAllNeeds()">クリア</button>
+      </div>
+    </div>
+  </div>
+
   <div id="needs-list"></div>
   <div class="btn-row">
     <button class="btn btn-g" onclick="goTab(2)">← 戻る</button>
@@ -389,13 +420,25 @@ let stock = {};
 // needs[newRoomName] = [{size:'4号',desk:30,chair:30}, ...]
 let needs = {};
 
+// 学年設定（号数のみ）
+let gradeConfig = [
+  {grade:1, deskSize:'7号', chairSize:'7号'},
+  {grade:2, deskSize:'6号', chairSize:'6号'},
+  {grade:3, deskSize:'5号', chairSize:'5号'},
+  {grade:4, deskSize:'4号', chairSize:'4号'},
+  {grade:5, deskSize:'3号', chairSize:'3号'},
+  {grade:6, deskSize:'2号', chairSize:'2号'},
+];
+// クラスごとの人数 {roomName: count}
+let classCounts = {};
+
 let lastMoves = [];
 let lastSurplus = [];
 let lastDirectMoves = [];
 
 // ── 保存・読み込み ──
 function saveData(){
-  const data={version:3,savedAt:new Date().toISOString(),rooms,roomMap,stock,needs};
+  const data={version:4,savedAt:new Date().toISOString(),rooms,roomMap,stock,needs,gradeConfig,classCounts};
   const d=new Date().toLocaleDateString('ja-JP',{year:'2-digit',month:'2-digit',day:'2-digit'}).replace(/\//g,'');
   const filename='机椅子移動計画_'+d+'.json';
   const json=JSON.stringify(data,null,2);
@@ -418,7 +461,7 @@ function loadFile(e){
     try{
       const d=JSON.parse(ev.target.result);
       if(!d.rooms||!d.stock) throw new Error('形式が正しくありません');
-      rooms=d.rooms; roomMap=d.roomMap||[]; stock=d.stock; needs=d.needs||{};
+      rooms=d.rooms; roomMap=d.roomMap||[]; stock=d.stock; needs=d.needs||{}; if(d.gradeConfig) gradeConfig=d.gradeConfig; if(d.classCounts) classCounts=d.classCounts;
       closeLoad(); renderAll();
       setDirty(false); toast('📂 読み込みました');
     }catch(err){alert('読み込みに失敗しました\n'+err.message);}
@@ -1164,6 +1207,96 @@ function updateStockFloat(){
     '</div>'+
     '<div style="font-size:10px;color:var(--muted);margin-top:4px;padding-top:6px;border-top:1px solid var(--border)">緑=入力済み　赤=在庫超過</div>';
 }
+
+// ── 学年設定・自動入力 ──
+function renderGradeConfig(){
+  // 号数設定
+  const el=document.getElementById('grade-config-rows');
+  if(el){
+    el.innerHTML='';
+    gradeConfig.forEach((g,i)=>{
+      const row=document.createElement('div');
+      row.style.cssText='display:grid;grid-template-columns:50px 90px 90px;gap:6px;align-items:center;margin-bottom:6px';
+      const dOpts=SIZES.map(s=>'<option'+(s===g.deskSize?' selected':'')+'>'+s+'</option>').join('');
+      const cOpts=SIZES.map(s=>'<option'+(s===g.chairSize?' selected':'')+'>'+s+'</option>').join('');
+      row.innerHTML=
+        '<div style="font-size:13px;font-weight:700;text-align:center;color:var(--green)">'+g.grade+'年</div>'+
+        '<div><select onchange="gradeConfig['+i+'].deskSize=this.value;setDirty(true)">'+dOpts+'</select></div>'+
+        '<div><select onchange="gradeConfig['+i+'].chairSize=this.value;setDirty(true)">'+cOpts+'</select></div>';
+      el.appendChild(row);
+    });
+  }
+  // クラス別人数
+  const el2=document.getElementById('class-count-rows');
+  if(el2){
+    el2.innerHTML='';
+    const newRooms=getNewRooms().filter(nr=>detectGrade(nr)!==null);
+    if(!newRooms.length){
+      el2.innerHTML='<div style="font-size:12px;color:var(--muted)">②旧→新の対応を設定してください</div>';
+      return;
+    }
+    newRooms.forEach(nr=>{
+      if(!classCounts[nr]) classCounts[nr]=30;
+      const row=document.createElement('div');
+      row.style.cssText='display:grid;grid-template-columns:1fr 70px;gap:6px;align-items:center;margin-bottom:6px';
+      row.innerHTML=
+        '<div style="font-size:12px;font-weight:500">'+escH(nr)+'</div>'+
+        '<div><input type="number" min="1" max="60" value="'+classCounts[nr]+'" style="text-align:center" '+
+          'oninput="classCounts[\''+escJ(nr)+'\']= +this.value;setDirty(true)"></div>';
+      el2.appendChild(row);
+    });
+  }
+}
+
+function toggleGradeConfig(){
+  const body=document.getElementById('grade-config-body');
+  const arrow=document.getElementById('grade-config-arrow');
+  const isOpen=body.style.display!=='none';
+  body.style.display=isOpen?'none':'block';
+  arrow.textContent=isOpen?'▼ 開く':'▲ 閉じる';
+  if(!isOpen) renderGradeConfig();
+}
+
+function detectGrade(roomName){
+  for(let g=1;g<=6;g++){
+    if(roomName.includes(g+'年')) return g;
+  }
+  return null;
+}
+
+function autoFillNeeds(){
+  const newRooms=getNewRooms();
+  let filled=0;
+  newRooms.forEach(nr=>{
+    const grade=detectGrade(nr);
+    if(grade===null) return;
+    const cfg=gradeConfig.find(g=>g.grade===grade);
+    if(!cfg) return;
+    const count=classCounts[nr]||30;
+    needs[nr]=[];
+    if(cfg.deskSize===cfg.chairSize){
+      needs[nr].push({size:cfg.deskSize,desk:count,chair:count});
+    } else {
+      needs[nr].push({size:cfg.deskSize,desk:count,chair:0});
+      needs[nr].push({size:cfg.chairSize,desk:0,chair:count});
+    }
+    filled++;
+  });
+  setDirty(true);
+  renderNeeds();
+  updateStockFloat();
+  toast('🤖 '+filled+'教室に自動入力しました。必要に応じて調整してください。');
+}
+
+function clearAllNeeds(){
+  if(!confirm('すべての必要台数をクリアしますか？')) return;
+  needs={};
+  setDirty(true);
+  renderNeeds();
+  updateStockFloat();
+  toast('クリアしました');
+}
+
 
 // 初期レンダリング
 initStock();
