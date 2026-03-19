@@ -1265,11 +1265,21 @@ function detectGrade(roomName){
 }
 
 function autoFillNeeds(){
+  const ADJUST_GRADES=[3,4]; // 在庫に合わせて調整する学年
   const newRooms=getNewRooms();
-  let filled=0;
+
+  // ── STEP1: 調整対象外（1・2・5・6年）を先に確定 ──
+  const fixedRooms=[], adjustRooms=[];
   newRooms.forEach(nr=>{
+    const g=detectGrade(nr);
+    if(g===null) return;
+    if(ADJUST_GRADES.includes(g)) adjustRooms.push(nr);
+    else fixedRooms.push(nr);
+  });
+
+  // 固定学年の必要台数を設定
+  fixedRooms.forEach(nr=>{
     const grade=detectGrade(nr);
-    if(grade===null) return;
     const cfg=gradeConfig.find(g=>g.grade===grade);
     if(!cfg) return;
     const count=classCounts[nr]||30;
@@ -1280,12 +1290,88 @@ function autoFillNeeds(){
       needs[nr].push({size:cfg.deskSize,desk:count,chair:0});
       needs[nr].push({size:cfg.chairSize,desk:0,chair:count});
     }
-    filled++;
   });
+
+  // ── STEP2: 固定学年を引いた残り在庫を計算 ──
+  // stock全体をコピー
+  const poolDesk={}, poolChair={};
+  SIZES.forEach(s=>{
+    poolDesk[s]=rooms.reduce((a,r)=>(a+(stock[r.name]?.desk?.[s]||0)),0);
+    poolChair[s]=rooms.reduce((a,r)=>(a+(stock[r.name]?.chair?.[s]||0)),0);
+  });
+  // 固定学年分を引く
+  fixedRooms.forEach(nr=>{
+    (needs[nr]||[]).forEach(e=>{
+      poolDesk[e.size]=Math.max(0,(poolDesk[e.size]||0)-(e.desk||0));
+      poolChair[e.size]=Math.max(0,(poolChair[e.size]||0)-(e.chair||0));
+    });
+  });
+
+  // ── STEP3: 調整学年（3・4年）をクラス単位で最適割り当て ──
+  // 各クラスの理想号数から±2号の範囲で在庫を使い切る
+  function allocatePool(pool, count, preferSize){
+    if(count<=0) return [];
+    const prefIdx=SIZES.indexOf(preferSize);
+    if(prefIdx<0) return [{size:preferSize,qty:count,shortage:true}];
+    // 大きい号数→小さい号数の優先順（成長を考慮）
+    const tryOrder=[preferSize];
+    for(let d=1;d<=2;d++){
+      if(prefIdx-d>=0) tryOrder.push(SIZES[prefIdx-d]);   // 大きい
+      if(prefIdx+d<SIZES.length) tryOrder.push(SIZES[prefIdx+d]); // 小さい
+    }
+    const result=[];
+    let remaining=count;
+    for(const sz of tryOrder){
+      if(remaining<=0) break;
+      const avail=pool[sz]||0;
+      if(avail<=0) continue;
+      const take=Math.min(avail,remaining);
+      result.push({size:sz,qty:take});
+      pool[sz]-=take;
+      remaining-=take;
+    }
+    if(remaining>0) result.push({size:preferSize,qty:remaining,shortage:true});
+    return result;
+  }
+
+  // 調整学年のクラスを処理
+  let warnings=[];
+  adjustRooms.forEach(nr=>{
+    const grade=detectGrade(nr);
+    const cfg=gradeConfig.find(g=>g.grade===grade);
+    if(!cfg) return;
+    const count=classCounts[nr]||30;
+    needs[nr]=[];
+    // 机
+    const dAllocs=allocatePool(poolDesk,count,cfg.deskSize);
+    dAllocs.forEach(a=>{
+      if(a.shortage){
+        warnings.push(nr+'の机（'+cfg.deskSize+'×'+a.qty+'台）が在庫不足');
+        return;
+      }
+      let entry=needs[nr].find(e=>e.size===a.size);
+      if(!entry){entry={size:a.size,desk:0,chair:0};needs[nr].push(entry);}
+      entry.desk+=a.qty;
+    });
+    // 椅子
+    const cAllocs=allocatePool(poolChair,count,cfg.chairSize);
+    cAllocs.forEach(a=>{
+      if(a.shortage){
+        warnings.push(nr+'の椅子（'+cfg.chairSize+'×'+a.qty+'台）が在庫不足');
+        return;
+      }
+      let entry=needs[nr].find(e=>e.size===a.size);
+      if(!entry){entry={size:a.size,desk:0,chair:0};needs[nr].push(entry);}
+      entry.chair+=a.qty;
+    });
+  });
+
   setDirty(true);
   renderNeeds();
   updateStockFloat();
-  toast('🤖 '+filled+'教室に自動入力しました。必要に応じて調整してください。');
+  let msg='🤖 '+(fixedRooms.length+adjustRooms.length)+'教室に自動入力しました（3・4年は在庫最適化済み）。';
+  if(warnings.length) msg+='\n⚠️ '+warnings.join('、');
+  toast(msg);
 }
 
 function clearAllNeeds(){
