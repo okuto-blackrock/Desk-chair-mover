@@ -159,6 +159,88 @@ tbody tr:hover{background:#FAFAF8}
 
 .legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--bg);border-radius:var(--rs)}
 .li{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+
+/* ── フロート在庫パネル ── */
+.stock-float {
+  position: fixed;
+  right: 16px;
+  top: 120px;
+  width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border-s);
+  border-radius: var(--r);
+  box-shadow: 0 4px 20px rgba(0,0,0,.12);
+  z-index: 90;
+  display: none;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+.stock-float.visible { display: block; }
+.sf-header {
+  background: var(--green);
+  color: #fff;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--r) var(--r) 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+}
+.sf-close {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  opacity: .7;
+}
+.sf-close:hover { opacity: 1; }
+.sf-body { padding: 8px 12px 12px; }
+.sf-section { margin-bottom: 10px; }
+.sf-label {
+  font-size:10px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.05em;
+  margin-bottom:4px;
+}
+.sf-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.sf-row:last-child { border-bottom: none; }
+.sf-size { color: var(--muted); }
+.sf-qty { font-weight: 700; }
+.sf-qty.entered { color: var(--green); }
+.sf-qty.over { color: var(--red); }
+.sf-toggle {
+  position: fixed;
+  right: 16px;
+  top: 120px;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: var(--r);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 90;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  display: none;
+}
+.sf-toggle.visible { display: block; }
+@media(max-width: 700px){
+  .stock-float { width: 180px; right: 8px; top: 110px; }
+  .sf-toggle { right: 8px; top: 110px; }
+}
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -364,7 +446,19 @@ function goTab(idx){
     if(sn) sn.textContent=i<idx?'✓':i+1;
   });
   if(idx===2) renderStock();
-  if(idx===3) renderNeeds();
+  if(idx===3){renderNeeds();updateStockFloat();}
+  // フロートボタン：④タブのみ表示
+  const sfToggle=document.getElementById('sf-toggle');
+  const sfPanel=document.getElementById('stock-float');
+  if(sfToggle){
+    if(idx===3){
+      sfToggle.classList.add('visible');
+      sfPanel.classList.add('visible');
+    } else {
+      sfToggle.classList.remove('visible');
+      sfPanel.classList.remove('visible');
+    }
+  }
   window.scrollTo(0,0);
 }
 
@@ -489,6 +583,7 @@ function setNeeds(room,size,type,val){
   let entry=needs[room].find(e=>e.size===size);
   if(!entry){entry={size,desk:0,chair:0};needs[room].push(entry);}
   entry[type]=val;
+  updateStockFloat();
 }
 
 // ── 計算ロジック ──
@@ -976,10 +1071,98 @@ function renderAll(){
 }
 
 
+// ── フロート在庫パネル ──
+function toggleStockFloat(){
+  const panel=document.getElementById('stock-float');
+  const btn=document.getElementById('sf-toggle');
+  const isOpen=panel.classList.contains('visible');
+  panel.classList.toggle('visible',!isOpen);
+  btn.classList.toggle('visible',isOpen);
+}
+
+function updateStockFloat(){
+  // 学校全体の在庫合計を計算
+  const deskTotal={}, chairTotal={};
+  SIZES.forEach(s=>{deskTotal[s]=0;chairTotal[s]=0;});
+  rooms.forEach(r=>{
+    SIZES.forEach(s=>{
+      deskTotal[s]+=(stock[r.name]?.desk?.[s]||0);
+      chairTotal[s]+=(stock[r.name]?.chair?.[s]||0);
+    });
+  });
+
+  // 現在入力されている必要台数の合計
+  const deskNeeded={}, chairNeeded={};
+  SIZES.forEach(s=>{deskNeeded[s]=0;chairNeeded[s]=0;});
+  const newRooms=getNewRooms();
+  newRooms.forEach(nr=>{
+    const needList=needs[nr]||[];
+    SIZES.forEach(s=>{
+      const entry=needList.find(e=>e.size===s)||{desk:0,chair:0};
+      deskNeeded[s]+=(entry.desk||0);
+      chairNeeded[s]+=(entry.chair||0);
+    });
+  });
+
+  // HTML生成
+  let deskRows='', chairRows='';
+  let hasDeskStock=false, hasChairStock=false;
+  SIZES.forEach(s=>{
+    const dt=deskTotal[s], dn=deskNeeded[s];
+    const ct=chairTotal[s], cn=chairNeeded[s];
+    if(dt>0||dn>0){
+      hasDeskStock=true;
+      const cls=dn>dt?'over':dn>0?'entered':'';
+      deskRows+='<div class="sf-row">'+
+        '<span class="sf-size">'+s+'</span>'+
+        '<span class="sf-qty">'+dt+'台'+
+        (dn>0?'<span style="font-size:10px;color:'+(dn>dt?'var(--red)':'var(--green)')+'"> 入力:'+dn+'</span>':'')+
+        '</span></div>';
+    }
+    if(ct>0||cn>0){
+      hasChairStock=true;
+      chairRows+='<div class="sf-row">'+
+        '<span class="sf-size">'+s+'</span>'+
+        '<span class="sf-qty">'+ct+'台'+
+        (cn>0?'<span style="font-size:10px;color:'+(cn>ct?'var(--red)':'var(--green)')+'"> 入力:'+cn+'</span>':'')+
+        '</span></div>';
+    }
+  });
+
+  const body=document.getElementById('sf-body');
+  if(!hasDeskStock&&!hasChairStock){
+    body.innerHTML='<div style="font-size:12px;color:var(--muted)">③現在の台数を入力すると表示されます</div>';
+    return;
+  }
+  body.innerHTML=
+    '<div class="sf-section">'+
+      '<div class="sf-label">机</div>'+
+      (hasDeskStock?deskRows:'<div style="font-size:12px;color:var(--muted)">在庫なし</div>')+
+    '</div>'+
+    '<div class="sf-section">'+
+      '<div class="sf-label">椅子</div>'+
+      (hasChairStock?chairRows:'<div style="font-size:12px;color:var(--muted)">在庫なし</div>')+
+    '</div>'+
+    '<div style="font-size:10px;color:var(--muted);margin-top:4px;padding-top:6px;border-top:1px solid var(--border)">緑=入力済み　赤=在庫超過</div>';
+}
+
 // 初期レンダリング
 initStock();
 renderRooms();
 renderMap();
 </script>
+
+<!-- フロート在庫パネル -->
+<button class="sf-toggle" id="sf-toggle" onclick="toggleStockFloat()">📊 在庫</button>
+<div class="stock-float" id="stock-float">
+  <div class="sf-header">
+    学校全体の在庫合計
+    <button class="sf-close" onclick="toggleStockFloat()">✕</button>
+  </div>
+  <div class="sf-body" id="sf-body">
+    <div style="font-size:12px;color:var(--muted)">④タブで表示されます</div>
+  </div>
+</div>
+
 </body>
 </html>
