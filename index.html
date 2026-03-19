@@ -985,6 +985,7 @@ function calcAndShow(){
     '<div class="btn-row">'+
       '<button class="btn btn-sm" onclick="copyText()">📋 テキストをコピー</button>'+
       '<button class="btn btn-sm btn-p" onclick="downloadExcel()">📊 Excelで出力</button>'+
+      '<button class="btn btn-sm btn-p" onclick="printLabels()">🖨️ 作業ラベルを印刷</button>'+
       '<button class="btn btn-sm" onclick="downloadCSV()">💾 CSVダウンロード</button>'+
     '</div></div>';
 
@@ -1120,6 +1121,8 @@ function downloadExcel(){
   const ws2=XLSX.utils.aoa_to_sheet(finalData);
   ws2['!cols']=[{wch:16},{wch:16},{wch:6},{wch:8},{wch:6},{wch:24},{wch:14}];
   XLSX.utils.book_append_sheet(wb,ws2,'教室別最終状態');
+
+
 
   XLSX.writeFile(wb,'机椅子移動計画_'+d+'.xlsx');
   toast('📊 Excelファイルをダウンロードしました');
@@ -1381,6 +1384,66 @@ function clearAllNeeds(){
   renderNeeds();
   updateStockFloat();
   toast('クリアしました');
+}
+
+
+// ── 作業ラベル印刷（B5・1枚1ラベル） ──
+function printLabels(){
+  const lines=buildAllMoveLines(lastMoves);
+  if(!lines.length){toast('移動指示がありません');return;}
+
+  let labelHTML='<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>移動作業ラベル</title><style>';
+  labelHTML+='@page{size:B5 portrait;margin:8mm;}';
+  labelHTML+='body{margin:0;padding:0;font-family:"Noto Sans JP",sans-serif;}';
+  labelHTML+='.label{width:100%;height:calc(100vh - 16mm);box-sizing:border-box;padding:10mm 12mm 8mm;display:flex;flex-direction:column;page-break-after:always;border:2px solid #333;position:relative;}';
+  labelHTML+='.label:last-child{page-break-after:auto;}';
+  labelHTML+='.from-label{font-size:10pt;color:#888;display:block;margin-bottom:1mm;}';
+  labelHTML+='.from{font-size:13pt;color:#555;margin-bottom:4mm;line-height:1.4;}';
+  labelHTML+='.divider{border:none;border-top:1.5px dashed #ccc;margin:4mm 0;}';
+  labelHTML+='.to-wrap{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;}';
+  labelHTML+='.to-label{font-size:11pt;color:#555;margin-bottom:3mm;}';
+  labelHTML+='.to{font-size:52pt;font-weight:900;line-height:1.1;color:#111;}';
+  labelHTML+='.to-sub{font-size:24pt;font-weight:700;color:#333;margin-top:2mm;}';
+  labelHTML+='.item{font-size:22pt;font-weight:700;color:#1A4A80;margin-top:6mm;}';
+  labelHTML+='.counter{position:absolute;bottom:8mm;right:12mm;font-size:20pt;font-weight:700;color:#2A5C3F;border:2px solid #2A5C3F;border-radius:6px;padding:1mm 5mm;background:#E6F0EB;}';
+  labelHTML+='</style></head><body>';
+
+  lines.forEach(function(l){
+    var total=l.qty;
+    var fromText=l.from;
+    var toText=l.to;
+    var itemText=l.item;
+    var noteText=l.note||'';
+
+    var toMatch=toText.match(/^(.+?)\（新:(.+?)\）$/);
+    var toOld=toMatch?toMatch[1]:toText;
+    var toNew=toMatch?toMatch[2]:'';
+
+    for(var n=1;n<=total;n++){
+      var noteSpan=noteText?('<br><span style="font-size:11pt;color:#999">'+noteText+'</span>'):'';
+      var toSubDiv=toNew?('<div class="to-sub">（新：'+toNew+'）</div>'):'';
+      labelHTML+='<div class="label">';
+      labelHTML+='<div class="from"><span class="from-label">移動元（旧）から</span>'+fromText+noteSpan+'</div>';
+      labelHTML+='<hr class="divider">';
+      labelHTML+='<div class="to-wrap">';
+      labelHTML+='<div class="to-label">移動先（旧）へ</div>';
+      labelHTML+='<div class="to">'+toOld+'</div>';
+      labelHTML+=toSubDiv;
+      labelHTML+='<div class="item">'+itemText+'</div>';
+      labelHTML+='</div>';
+      labelHTML+='<div class="counter">'+n+' / '+total+'</div>';
+      labelHTML+='</div>';
+    }
+  });
+
+  labelHTML+='</body></html>';
+
+  var win=window.open('','_blank','width=800,height=600');
+  if(!win){toast('ポップアップがブロックされました。ブラウザの設定を確認してください。');return;}
+  win.document.write(labelHTML);
+  win.document.close();
+  win.onload=function(){setTimeout(function(){win.print();},300);};
+  toast('🖨️ 印刷プレビューを開きました');
 }
 
 
