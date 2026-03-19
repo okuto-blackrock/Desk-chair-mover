@@ -554,6 +554,7 @@ function renderNeeds(){
   newRooms.forEach(nr=>{
     if(!needs[nr]) needs[nr]=[];
     const c=document.createElement('div'); c.className='card needs-card';
+    c.id='needs-card-'+escJ(nr);
     let rows='';
     SIZES.forEach(s=>{
       const entry=needs[nr].find(e=>e.size===s)||{size:s,desk:0,chair:0};
@@ -567,14 +568,25 @@ function renderNeeds(){
         '<div style="font-size:11px;color:var(--faint)">台</div>'+
       '</div>';
     });
+    // 合計計算
+    const totalDesk=(needs[nr]||[]).reduce((a,e)=>a+(e.desk||0),0);
+    const totalChair=(needs[nr]||[]).reduce((a,e)=>a+(e.chair||0),0);
+    const totalRow='<div style="display:flex;gap:12px;align-items:center;margin-top:10px;padding-top:8px;border-top:1.5px solid var(--border-s);font-size:13px;font-weight:700">'+
+      '<span style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">合計</span>'+
+      '<span>机 <span id="total-desk-'+escJ(nr)+'" style="color:var(--green)">'+totalDesk+'</span> 台</span>'+
+      '<span>椅子 <span id="total-chair-'+escJ(nr)+'" style="color:var(--green)">'+totalChair+'</span> 台</span>'+
+    '</div>';
     c.innerHTML=
-      '<div class="ctitle">🏫 '+escH(nr)+'</div>'+
+      '<div class="ctitle">'+
+        '<span style="background:var(--green);color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px;margin-right:6px">新</span>'+
+        '🏫 '+escH(nr)+
+      '</div>'+
       '<div style="display:grid;grid-template-columns:70px 90px 90px auto;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">'+
         '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">号数</div>'+
         '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">机（台）</div>'+
         '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">椅子（台）</div>'+
         '<div></div>'+
-      '</div>'+rows;
+      '</div>'+rows+totalRow;
     el.appendChild(c);
   });
 }
@@ -583,6 +595,13 @@ function setNeeds(room,size,type,val){
   let entry=needs[room].find(e=>e.size===size);
   if(!entry){entry={size,desk:0,chair:0};needs[room].push(entry);}
   entry[type]=val;
+  // 合計をリアルタイム更新
+  const totalDesk=(needs[room]||[]).reduce((a,e)=>a+(e.desk||0),0);
+  const totalChair=(needs[room]||[]).reduce((a,e)=>a+(e.chair||0),0);
+  const dEl=document.getElementById('total-desk-'+room);
+  const cEl=document.getElementById('total-chair-'+room);
+  if(dEl) dEl.textContent=totalDesk;
+  if(cEl) cEl.textContent=totalChair;
   updateStockFloat();
 }
 
