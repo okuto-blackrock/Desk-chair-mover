@@ -898,7 +898,7 @@ function calcAndShow(){
     allMoves.forEach(m=>{
       const key=m.size+'_'+m.itemType;
       if(!summary[key]) summary[key]={size:m.size,itemType:m.itemType,qty:0,fromRooms:[],shortage:false,sameOnly:true};
-      summary[key].qty+=m.qty;
+      if(!m.shortage) summary[key].qty+=m.qty;
       if(m.shortage) summary[key].shortage=true;
       else{if(!m.sameRoom) summary[key].sameOnly=false;if(!summary[key].fromRooms.includes(m.fromRoom)) summary[key].fromRooms.push(m.fromRoom);}
     });
@@ -918,9 +918,13 @@ function calcAndShow(){
           const dq=stock[res.oldRoom]?.desk?.[s]||0;
           const cq=stock[res.oldRoom]?.chair?.[s]||0;
           const dOut=(lastDirectMoves||[]).filter(m=>m.fromRoom===res.oldRoom&&m.itemType==='desk'&&m.size===s).reduce((a,m)=>a+m.qty,0)
-            +(lastSurplus||[]).filter(m=>m.fromRoom===res.oldRoom&&m.itemType==='desk'&&m.size===s).reduce((a,m)=>a+m.qty,0);
+            +(lastSurplus||[]).filter(m=>m.fromRoom===res.oldRoom&&m.itemType==='desk'&&m.size===s).reduce((a,m)=>a+m.qty,0)
+            +(lastMoves||[]).flatMap(r=>[...r.deskMoves.map(m=>({...m,itemType:'desk'}))])
+              .filter(m=>m.fromRoom===res.oldRoom&&m.size===s&&!m.sameRoom&&!m.shortage).reduce((a,m)=>a+m.qty,0);
           const cOut=(lastDirectMoves||[]).filter(m=>m.fromRoom===res.oldRoom&&m.itemType==='chair'&&m.size===s).reduce((a,m)=>a+m.qty,0)
-            +(lastSurplus||[]).filter(m=>m.fromRoom===res.oldRoom&&m.itemType==='chair'&&m.size===s).reduce((a,m)=>a+m.qty,0);
+            +(lastSurplus||[]).filter(m=>m.fromRoom===res.oldRoom&&m.itemType==='chair'&&m.size===s).reduce((a,m)=>a+m.qty,0)
+            +(lastMoves||[]).flatMap(r=>[...r.chairMoves.map(m=>({...m,itemType:'chair'}))])
+              .filter(m=>m.fromRoom===res.oldRoom&&m.size===s&&!m.sameRoom&&!m.shortage).reduce((a,m)=>a+m.qty,0);
           const dr=dq-dOut, cr=cq-cOut;
           if(dr>0){rows+='<div class="rrow"><span class="rlabel">'+s+' 机</span><span class="rval">'+dr+'台<span style="font-size:11px;font-weight:400;color:var(--muted)"> そのまま在室</span></span></div>';hasStock=true;}
           if(cr>0){rows+='<div class="rrow"><span class="rlabel">'+s+' 椅子</span><span class="rval">'+cr+'台<span style="font-size:11px;font-weight:400;color:var(--muted)"> そのまま在室</span></span></div>';hasStock=true;}
@@ -1099,7 +1103,7 @@ function downloadExcel(){
     allMoves.forEach(m=>{
       const key=m.size+'_'+m.itemType;
       if(!summary[key]) summary[key]={size:m.size,itemType:m.itemType,qty:0,fromRooms:[],shortage:false,sameOnly:true};
-      summary[key].qty+=m.qty;
+      if(!m.shortage) summary[key].qty+=m.qty;
       if(m.shortage) summary[key].shortage=true;
       else{if(!m.sameRoom) summary[key].sameOnly=false;if(!summary[key].fromRooms.includes(m.fromRoom)) summary[key].fromRooms.push(m.fromRoom);}
     });
